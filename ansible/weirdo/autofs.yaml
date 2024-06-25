@@ -1,0 +1,62 @@
+---
+- name: autofs
+  hosts: all
+  gather_facts: true
+  become: yes
+  become_method: sudo
+
+  tasks:
+    - name: Install autofs on Ubuntu
+      apt:
+        name: autofs
+        state: present
+      when: ansible_os_family == 'Debian'
+      tags: autofs
+
+    - name: Install autofs on RHEL
+      yum:
+        name: autofs
+        state: present
+      when: ansible_os_family == 'RedHat'
+      tags: autofs
+    
+    - name: Install nfs-utils on RHEL
+      yum:
+        name: nfs-utils
+        state: present
+      when: ansible_os_family == 'RedHat'
+      tags: autofs
+
+    - name: Install rpcbind on RHEL
+      yum:
+        name: rpcbind
+        state: present
+      when: ansible_os_family == 'RedHat'
+      tags: autofs
+
+    - name: Change automount in nsswitch.conf
+      lineinfile:
+        path: /etc/nsswitch.conf
+        regexp: '^automount:\s+sss files'
+        line: 'automount:      files'
+      become: yes
+      tags: autofs
+
+    - name: copy autofs files
+      copy:
+        src: "/etc/{{ item }}"
+        dest: "/etc/{{ item }}"
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - auto.master
+        - home.map
+        - downloads.map
+      tags: autofs
+
+    - name: Start autofs service
+      service:
+        name: "autofs"
+        state: "started"
+        enabled: "yes"

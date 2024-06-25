@@ -1,0 +1,63 @@
+## autorecon
+python3 -m pip install git+https://github.com/Tib3rius/AutoRecon.git
+
+## PEASS
+https://github.com/carlospolop/PEASS-ng/releases/download/20220417/linpeas_linux_amd64
+https://github.com/carlospolop/PEASS-ng/releases/download/20220417/winPEASx64.exe
+
+## Traitor
+https://github.com/liamg/traitor/releases/download/v0.0.14/traitor-amd64
+https://github.com/liamg/traitor/archive/refs/tags/v0.0.14.tar.gz
+
+## SUID3NUM
+https://github.com/Anon-Exploiter/SUID3NUM.git
+
+## PwnKit
+curl -fsSL https://raw.githubusercontent.com/ly4k/PwnKit/main/PwnKit -o PwnKit
+
+## evil-winrm
+gem install evil-winrm
+    evil-winrm -i 10.129.201.51 -u htb-student -p HTB_@cademy_stdnt!
+        you may have to # line 123
+            code /var/lib/gems/3.0.0/gems/evil-winrm-3.3/lib/evil-winrm.rb
+
+## zfs-inplace-rebalance
+add disks to zfs pool
+
+https://github.com/markusressel/zfs-inplace-rebalancing.git
+
+benchmark HDD
+    fio --name=seqwrite --rw=write --direct=1 --ioengine=libaio --bs=1M --numjobs=4 --size=5G --runtime=600 --group_reporting
+
+## zfs
+    wipefs -a -f /dev/sda
+    zpool create backup_1 /dev/sda
+    zpool remove backup_1
+    zpool add ?
+
+## nessus
+    localhost:8834
+    systemctl stop nessusd
+    datetimectl set-ntp false
+    datetimectl set-time "2023-01-01"
+    datetimectl status (make sure it is a year out)
+    systemctl start nessusd
+    confirm the #of IPs reset
+    systemctl stop nessusd
+    datetimectl set-ntp true
+    systemctl start nessusd
+
+## manually install
+    apt --only-upgrade install PACKAGE
+
+## apt -f install is still not working and throwing a depend error try 
+    dpkg -i --force-overwrite /FILEPATH.DEB
+
+## tar
+    tar zxvf fileNameHere.tgz  // this will extract in the current directory
+
+## rsync
+    backup
+        rsync -aHAXvP --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found"} /* /media/hydr0burn/backup/backup_APR30/
+    restore
+        rsync -aHAXvP /path/to/backup/folder /path/to/mounted/HDD

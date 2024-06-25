@@ -1,0 +1,537 @@
+---
+- hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: runas
+  become_user: DOMAIN\USERNAME
+
+  vars:
+    config: "{{ lookup('file', './config.json') | from_json }}"
+    db_vars: "('{{ hostname }}', '{{ logs_sum }}', comments,'{{ domain }}', '{{ last_patched }}', '{{ ip }}', '{{ os }}', '{{ os_version }}', '{{ build }}', local_accounts_str, '{{ device_control }}', '{{ cdrom }}', '{{ uptime }}', '{{ manufacturer }}', '{{ product_name }}', '{{ serial_number }}', '{{ is_vm }}', network_devices_str, encryption_status_str)"
+    #win_csv_path: "\\\\192.168.1.149\\storage\\home\\USERNAME\\dev\\git_repos\\snippets\\ansible\\toolkit\\output\\hosts.csv"
+    #linux_csv_path: "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/hosts.csv"
+    #csv_vars: "{{ fqdn }},{{ ip }},{{ os }},{{ os_version }},{{ os_family }},{{ os_kernel }},{{ os_arch }},{{ uptime }},{{ manufacturer }},{{ product_name }},{{ serial_number }},{{ is_vm }},{{ system_date }},{{ system_time }},{{ network_devices | join(', ') }}"
+    # win_findings_path: "\\\\192.168.1.149\\storage\\home\\USERNAME\\dev\\git_repos\\snippets\\ansible\\toolkit\\output\\host_details.txt"
+    # linux_findings_path: "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/host_details.txt"
+    # headers: "Hostname,Logs Collected,Comments,Domain,Patch Date,IP,OS,OS Version,Uptime (secs),Manufacturer,PC Name,Serial Number,VM,Network Devices,Drives Encrypted"
+  
+  tasks:
+    - name: Set is_windows fact
+      set_fact:
+        is_windows: "{{ ansible_os_family == 'Windows' }}"
+    
+    # - name: debug facts
+    #   debug:
+    #     msg: "{{ ansible_facts }}"
+
+    - block:
+        - name: Get mount information (Linux)
+          shell: df -Ph | sed s/%//g
+          register: df_output
+          ignore_errors: yes
+
+        - name: Get the number of days since the last Saturday
+          run_once: yes
+          shell: echo $(( ( $(date +%s) - $(date -dlast-saturday +%s) ) / 86400 ))
+          register: days_since_last_saturday
+          changed_when: False
+
+        - name: Check if required files exist and were created after the last Saturday
+          find:
+            paths: "/var/log"
+            patterns: "{{ item }}"
+            age: "{{ days_since_last_saturday.stdout }}"
+            age_stamp: ctime
+          register: files
+          with_items:
+            - audit.log
+            - syslog
+            - auth.log
+          failed_when: files.matched == 0
+          ignore_errors: yes
+
+        - name: Check if all drives are encrypted (Linux)
+          shell: |
+            key_file="/path/to/your/keyfile"  # Replace with the path to your key file
+            if [ -r "$key_file" ] && [ ! -o "$key_file" ]; then
+              echo "Luks key file world readable"
+            fi
+            for device in $(lsblk -dpno NAME | grep -v loop); do
+              if ! cryptsetup isLuks $device > /dev/null 2>&1; then
+                echo "$device: Not Encrypted"
+              else
+                echo "$device: Encrypted"
+                luks_info=$(cryptsetup luksDump $device)
+                cipher=$(echo "$luks_info" | grep "Cipher name" | cut -d ":" -f2 | tr -d ' ')
+                key_slots=$(echo "$luks_info" | grep "Key Slot" | cut -d ":" -f1 | tr -d ' ')
+                echo "Cipher: $cipher"
+                echo "Key Slots: $key_slots"
+              fi
+            done
+          register: linux_encrypted
+
+        - name: modprobe blacklisting and installation check
+          shell: |
+            is_vm={{ ansible_virtualization_role == 'guest' }}
+            all_present=true
+            missing_modules=""
+            for module in usb-storage sr_mod cdrom uas; do
+              if ! grep -rq "blacklist $module" /etc/modprobe.d || ! grep -rq "install $module /bin/true" /etc/modprobe.d; then
+                all_present=false
+                missing_modules="${missing_modules},${module}"
+              fi
+            done
+            missing_modules=$(echo $missing_modules | sed 's/^,//')
+            if $all_present; then
+              if $is_vm; then
+                echo "usb_guard N/A (VM)"
+              else
+                echo "usb_guard ACTIVE"
+              fi
+            else
+              echo "Missing modules: $missing_modules"
+            fi
+          register: usb_guard_check
+
+        - name: check if cdrom is attached and set cdrom status
+          shell: lshw -class disk | grep -q cdrom && echo 'ATTACHED' || echo 'None'
+          ignore_errors: yes
+          become: yes
+          become_method: sudo
+          become_user: USERNAME
+          register: cdrom_linux
+
+        - name: Get local accounts
+          shell: |
+            awk -F':' '{ if ($3 >= 1000 && $3 != 65534) print $1 }' /etc/passwd | xargs -n1
+          register: local_accounts
+
+        - name: Gather package facts
+          package_facts:
+            manager: auto
+
+        - name: Get the last system update for RHEL
+          shell: yum history | awk '$3=="update" {print substr($5, 1, 10); exit}'
+          register: last_patch
+          when: ansible_os_family == "RedHat"
+          ignore_errors: yes
+
+        - name: Get the last system update for Ubuntu
+          shell: grep 'status installed' /var/log/dpkg.log | tail -1
+          register: last_update_info
+          when: ansible_os_family == "Debian"
+          ignore_errors: yes
+
+        - name: Set facts for the last system update
+          set_fact:
+            last_patch: "{{ (last_update_info.stdout | regex_search('(\\d{4}-\\d{2}-\\d{2})', '\\1')) | first if ansible_os_family == 'Debian' else last_patch.stdout }}"
+        - name: Set facts for Linux
+          set_fact:
+            hostname: "{{ ansible_hostname }}"
+            comments: "N/A"
+            domain: "{{ ansible_domain }}"
+            logs_sum: "{{ files.results | map(attribute='matched') | sum }}"
+            last_patched: "{{ last_patch }}"
+            #fqdn: "{{ ansible_fqdn }}"
+            ip: "{{ ansible_default_ipv4.address }}"
+            os: "{{ ansible_distribution }}"
+            os_version: "{{ ansible_distribution_version }}"
+            os_family: "{{ ansible_os_family }}"
+            os_kernel: "{{ ansible_kernel }}"
+            os_arch: "{{ ansible_architecture }}"
+            build: "{{ ansible_kernel }}"
+            accounts: "{{ local_accounts.stdout.split('\n') }}"
+            uptime: "{{ ansible_uptime_seconds }}"
+            manufacturer: "{{ ansible_system_vendor | replace(',', '') }}"
+            product_name: "{{ ansible_product_name | replace(',', '.') }}"
+            serial_number: "{{ ansible_product_serial }}"
+            is_vm: "{{ ansible_virtualization_role }}"
+            device_control: "{{ usb_guard_check.stdout }}"
+            cdrom: "{{ cdrom_linux.stdout | trim}}"
+            # system_date: "{{ ansible_date_time.date }}"
+            # system_time: "{{ ansible_date_time.time }}"
+            network_devices: "{{ ansible_interfaces | map('replace', '-', '_') | select('in', ansible_facts) | map('extract', ansible_facts) | selectattr('active', 'equalto', true) | selectattr('macaddress', 'defined') | map(attribute='device') | list }}"
+            mounts: "{{ df_output.stdout_lines | join('\n') }}"
+            encryption_status: "{{ linux_encrypted.stdout_lines | map('split', '\n') | map('list') | list }}"
+          ignore_errors: yes
+      when: not is_windows
+
+    - block:
+        - name: Check if all drives are encrypted (Windows)
+          become: yes
+          become_method: runas
+          become_user: DOMAIN\USERNAME
+          win_shell: |
+            $drives = Get-WmiObject -Class Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3}
+            $result = @()
+            foreach ($drive in $drives) {
+              $status = manage-bde -status $drive.DeviceID
+              $percentageEncrypted = ($status -match "Percentage Encrypted: (.*)") 
+              if ($status -match "Conversion Status: Fully Encrypted") {
+                $encryptionMethod = if ($status -match "Encryption Method: (.*)") { $Matches[1] }
+                $result += "$($drive.DeviceID) $percentageEncrypted with $encryptionMethod"
+              } else {
+                $result += "$($drive.DeviceID) $percentageEncrypted"
+              }
+            }
+            $result -join "`n"
+          register: win_encrypted
+
+        - name: Get build and build revision number (win)
+          become: yes
+          become_method: runas
+          become_user: DOMAIN\USERNAME
+          win_shell: |
+            try {
+              $currentBuild = (Get-ItemProperty "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion").CurrentBuild
+              $buildRevision = (Get-ItemProperty "HKLM:SOFTWARE\Microsoft\Windows NT\CurrentVersion").UBR
+              $result = "Build $currentBuild / Rev $buildRevision"
+            } catch {
+              $result = $_.Exception.Message
+            }
+            $result
+          register: os_build
+
+        - name: Get local accounts
+          become: yes
+          become_method: runas
+          become_user: DOMAIN\USERNAME
+          win_shell: |
+            $result = @()
+            $accounts = Get-WmiObject -Class Win32_UserAccount -Filter "LocalAccount='True'"
+            foreach ($account in $accounts) {
+              $result += $account.Name
+            }
+            $result -join ", "
+          register: local_accounts
+        
+        - name: Get monitor serial numbers
+          win_shell: |
+            $result = @()
+            Function char($Array) {
+            $Output = ""
+            ForEach($chara in $Array){
+                $Output += [char]$chara -join ""
+              }
+            Return $Output
+            }
+
+            $Monitor=Get-WmiObject WMIMonitorID -Namespace root\wmi
+
+            $Output = Char($Monitor.serialnumberid)
+            $result += $Output
+            $result -join ", "
+          register: win_monitors
+
+        - name: Debug
+          debug:
+            var: win_monitors.stdout_lines
+
+        - name: Check if required files exist and were created after the last Saturday
+          delegate_to: "{{ config.ansible_machine }}"
+          find:
+            paths: "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/logs/"
+            patterns: "{{ item }}"
+            age: "{{ days_since_last_saturday.stdout }}"
+            age_stamp: ctime
+          register: files
+          with_items:
+            - Security.evtx
+            - System.evtx
+            - Application.evtx
+          failed_when: files.matched == 0
+          ignore_errors: yes
+
+        - name: Get the last Windows update
+          win_shell: |
+            Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First 1 | ConvertTo-Json
+          register: win_last_update
+
+        - name: extract DateTime from InstalledOn and convert to Unix timestamp
+          set_fact:
+            win_update: "{{ ((win_last_update.stdout | from_json).InstalledOn.value) }}"
+          ignore_errors: yes
+
+        - name: Extract Unix timestamp and convert to yyyy-mm-dd format
+          delegate_to: "{{ config.ansible_machine }}"
+          shell: |
+            python3 -c "from datetime import datetime; print(datetime.fromtimestamp(int('{{ win_update }}'.replace('/Date(', '').replace(')/', '')) / 1000).strftime('%Y-%m-%d'))"
+          register: date_result
+
+        - name: Set win_update_date fact
+          set_fact:
+            win_update_date: "{{ date_result.stdout }}"
+
+        - name: check if Ivanti installed and running
+          win_shell: |
+            $result = @()
+            $service = Get-Service -Name 'Ivanti Device and Application Control Agent'
+            if ($service) {
+              $result += "Ivanti installed"
+              if ($service.Status -eq 'Running') {
+                $result += "and running"
+              } else {
+                $result += "and not running"
+              }
+            } else {
+              $result += "Ivanti not installed"
+            }
+            $result -join ", "
+          register: ivanti
+
+        - name: check if cdrom attached
+          win_shell: |
+            $result = @()
+            $cdrom = Get-WmiObject -Class Win32_CDROMDrive
+            if ($cdrom) {
+              $result += "ATTACHED"
+            } else {
+              $result += "None"
+            }
+            $result -join ", "
+          register: cdrom_attached
+          ignore_errors: yes
+
+        - name: Set facts for Windows
+          set_fact:
+            hostname: "{{ ansible_hostname }}"
+            comments: "N/A"
+            domain: "{{ ansible_domain }}"
+            logs_sum: "{{ files.results | map(attribute='matched') | sum }}"
+            last_patched: "{{ win_update_date }}"
+            #fqdn: "{{ ansible_fqdn }}"
+            ip: "{{ ansible_ip_addresses | ipaddr('ipv4') | first }}"
+            os: "{{ ansible_distribution }}"
+            os_version: "{{ ansible_distribution_version }}"
+            os_family: "{{ ansible_os_family }}"
+            os_kernel: "{{ ansible_kernel }}"
+            os_arch: "{{ ansible_architecture }}"
+            build: "{{ os_build.stdout | trim }}"
+            accounts: "{{ local_accounts.stdout | replace('\r\n', '') | trim | split(', ') }}"
+            monitors: "{{ win_monitors.stdout.split(', ') }}"
+            uptime: "{{ ansible_uptime_seconds }}"
+            manufacturer: "{{ ansible_system_vendor | replace(',', '') }}"
+            product_name: "{{ ansible_product_name | replace(',', '.') }}"
+            serial_number: "{{ ansible_product_serial }}"
+            is_vm: "{{ ansible_virtualization_role }}"
+            device_control: "{{ ivanti.stdout | trim }}"
+            cdrom: "{{ cdrom_attached.stdout | trim}}"
+            # system_date: "{{ ansible_date_time.date }}"
+            # system_time: "{{ ansible_date_time.time }}"
+            network_devices: "{{ ansible_interfaces | map('replace', '-', '_') | select('in', ansible_facts) | map('extract', ansible_facts) | selectattr('active', 'equalto', true) | selectattr('macaddress', 'defined') | map(attribute='device') | list }}"
+            mounts: " "
+            encryption_status: "{{ win_encrypted.stdout_lines | map('split', ', ') | map('list') | list }}"
+          ignore_errors: yes
+      when: is_windows
+    
+    - name: Debug last_patched
+      debug:
+        msg: "{{ last_patched }}"
+
+    - name: Debug cdrom_attached
+      debug:
+        msg: "{{ cdrom_attached }}"
+    
+
+    
+
+    # - name: Findings (Windows)
+    #   win_shell: |
+    #     $content = @"
+    #     #####################################################
+    #                         {{ hostname }}               
+    #     #####################################################
+                
+    #         **                                                 **
+    #         **              DISK USAGE AND MOUNTS              **
+    #         **                                                 **
+            
+    #             {{ hostname }} has these mounts and disk usage:
+
+    #         **                                                 **
+    #         **           HARD DRIVE ENCRYPTION STATUS          **
+    #         **                                                 **
+
+    #             Hard drive encryption status for {{ hostname }}:
+    #             {{ encryption_status }}
+
+    #     "@
+    #     if (-not (Test-Path -Path "{{ win_findings_path }}")) {
+    #         New-Item -ItemType File -Path "{{ win_findings_path }}"
+    #     }
+    #     Add-Content -Path "{{ win_findings_path }}" -Value $content
+    #   when: ansible_os_family == "Windows"
+
+    # - name: Findings (Linux)
+    #   shell: |
+    #     cat << EOF >> {{ linux_findings_path }}
+    #     #####################################################
+    #                          {{ hostname }}               
+    #     #####################################################
+
+    #         **                                                 **
+    #         **              DISK USAGE AND MOUNTS              **
+    #         **                                                 ** 
+
+    #             {{ hostname }} disk usage and mounts are: 
+    #             {{ mounts }}
+
+    #         **                                                 **
+    #         **           HARD DRIVE ENCRYPTION STATUS          **
+    #         **                                                 **
+
+    #             Hard drive encryption status for {{ hostname }}:
+    #             {{ encryption_status }}
+
+    #     EOF
+    #   when: ansible_os_family != "Windows"
+
+    - name: Store output in database
+      delegate_to: "{{ config.ansible_machine }}"
+      shell: |
+        python3 -c "
+        import sqlite3
+        import json
+        import datetime
+        import re
+
+        conn = sqlite3.connect('{{ config.host_db_path }}')
+        c = conn.cursor()
+
+        # Get the list of all tables
+        c.execute('SELECT name FROM sqlite_master WHERE type=\'table\'')
+        tables = c.fetchall()
+        date_str = datetime.datetime.now().strftime('%Y%m%d')
+        # Filter tables that start with 'IS' and sort them in descending order
+        is_tables = sorted([table[0] for table in tables if re.match(r'IS\d+_{date_str}', table[0])], reverse=True)
+
+        # If a table exists, get the comments associated with the hostname
+        comments = None
+        if is_tables:
+          print(f'Hostname: {{ hostname }}')
+          c.execute(f'SELECT comments FROM "{is_tables[0]}" WHERE hostname = ?', ('{{ hostname }}',))
+          fetch_result = c.fetchone()
+          print(f'Fetch result: {fetch_result}')
+          comments = fetch_result[0] if fetch_result else None
+
+        # Create a new table with the current date
+        c.execute(f'''
+          CREATE TABLE IF NOT EXISTS "ISxxxx_{date_str}" (
+            hostname TEXT PRIMARY KEY,
+            logs_sum INTEGER,
+            comments TEXT,
+            domain TEXT,
+            patch_date TEXT,
+            ip TEXT,
+            os TEXT,
+            os_version TEXT,
+            build TEXT,
+            accounts TEXT,
+            device_control TEXT,
+            cdrom_attached TEXT,
+            uptime INTEGER,
+            manufacturer TEXT,
+            product_name TEXT,
+            serial_number TEXT,
+            is_vm TEXT,
+            network_devices TEXT,
+            encryption_status TEXT
+          )
+        ''')
+
+        network_devices_str = json.dumps({{ network_devices }})
+        encryption_status_str = json.dumps({{ encryption_status }})
+        local_accounts_str = json.dumps({{ accounts }})
+
+        # Insert or replace the data in the new table
+        c.execute(f'''
+          INSERT OR REPLACE INTO "ISxxxx_{date_str}" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', ( {{ db_vars }} ))
+
+        conn.commit()
+        conn.close()
+        "
+      
+    # - name: Check for more than 2 devices
+    #   delegate_to: "{{ config.ansible_machine }}"
+    #   shell: |
+    #     python3 -c "
+    #     import sqlite3
+
+    #     conn = sqlite3.connect('{{ config.host_db_path }}')
+    #     c = conn.cursor()
+    #     c.execute('SELECT hostname, network_devices FROM findings')
+    #     rows = c.fetchall()
+
+    #     with open('/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/findings.txt', 'w') as f:
+    #         for row in rows:
+    #             if len(row[1].split(',')) > 2:
+    #                 # Write the formatted output to the text file
+    #                 f.write('#####################################################\\n')
+    #                 f.write(f'                    {row[0]}               \\n')
+    #                 f.write('#####################################################\\n\\n')
+    #                 f.write('**                                                 **\\n')
+    #                 f.write('** ACTIVE NICs, BLUETOOTH, AND/OR WIRELESS DEVICES **\\n')
+    #                 f.write('**                                                 **\\n\\n')
+    #                 f.write(f'The active devices on  {row[0]} are:\\n  {row[1]}\\n\\n\\n')
+
+    #     conn.close()
+    #     "
+      
+    # - name: check for non encrypted drives
+    #   delegate_to: "{{ config.ansible_machine }}"
+    #   shell: |
+    #     python3 -c "
+    #     import sqlite3
+
+    #     conn = sqlite3.connect('{{ config.host_db_path }}')
+    #     c = conn.cursor()
+    #     c.execute('SELECT hostname, encryption_status FROM findings')
+    #     rows = c.fetchall()
+
+    #     with open('//home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/findings.txt', 'w') as f:
+    #       for row in rows:
+    #         if 'Not Encrypted' in row[1]:
+    #           # Write the formatted output to the text file
+    #           f.write('#####################################################\\n')
+    #           f.write(f'                    {row[0]}               \\n')
+    #           f.write('#####################################################\\n\\n')
+    #           f.write('**                                                 **\\n')
+    #           f.write('**           HARD DRIVE ENCRYPTION STATUS          **\\n')
+    #           f.write('**                                                 **\\n\\n')
+    #           f.write(f'The hard drive encryption status for {row[0]} is:\\n  {row[1]}\\n\\n\\n')
+    #     conn.close()
+    #     "
+
+    # - name: Export DB to CSV
+    #   delegate_to: "{{ config.ansible_machine }}"
+    #   shell: |
+    #     python3 -c "
+    #     import sqlite3
+    #     import csv
+
+    #     # Connect to the SQLite database
+    #     conn = sqlite3.connect('{{ config.host_db_path }}')
+    #     c = conn.cursor()
+
+    #     headers = {{ headers.split(',') }}
+    #     c.execute('SELECT * FROM findings')
+    #     rows = c.fetchall()
+
+    #     with open('/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/all_hosts.csv', 'w', newline='') as f:
+    #         writer = csv.writer(f)
+    #         writer.writerow(headers)
+    #         writer.writerows(rows)
+
+    #     # Close the database connection
+    #     conn.close()
+    #     "
+
+      # Add cron, luks file perms, luks default pass, AV last scan date/type and patch date 
+      ## add the C3 checklist as an export 
+      ## add BLDG/Room/cube
+      ### add unallocated space
+
+
+
+

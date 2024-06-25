@@ -1,0 +1,18 @@
+---
+menu:
+  ansible:
+    main:
+    - option: 1
+      name: "Install Sysmon (Windows)"
+      main: "install_software_win"
+      tag: sysmon
+    - option: 2
+      name: "Install Splunk Universal Forwarder (all)"
+      main: "splunk_forwarder"
+      tag: splunk_forwarder
+    - option: 3
+      name: "Test"
+      main: "Test"
+    - option: 4
+      name: "Quit"
+      main: "Quit"

@@ -1,0 +1,305 @@
+---
+- hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: runas
+  become_user: DOMAIN\USER
+
+  vars:
+    win_csv_path: "\\\\192.168.1.149\\storage\\home\\USERNAME\\dev\\git_repos\\snippets\\ansible\\toolkit\\output\\hosts.csv"
+    linux_csv_path: "USERNAME/dev/git_repos/snippets/ansible/toolkit/output/hosts.csv"
+    #csv_vars: "{{ fqdn }},{{ ip }},{{ os }},{{ os_version }},{{ os_family }},{{ os_kernel }},{{ os_arch }},{{ uptime }},{{ manufacturer }},{{ product_name }},{{ serial_number }},{{ is_vm }},{{ system_date }},{{ system_time }},{{ network_devices | join(', ') }}"
+    db_vars: "('{{ hostname }}', '{{ domain }}', '{{ ip }}', '{{ os }}', '{{ os_version }}', '{{ os_family }}', '{{ os_kernel }}', '{{ os_arch }}', '{{ uptime }}', '{{ manufacturer }}', '{{ product_name }}', '{{ serial_number }}', '{{ is_vm }}', '{{ system_date }}', '{{ system_time }}', network_devices_str, encryption_status_str)"
+    win_findings_path: "\\\\192.168.1.149\\storage\\home\\USERNAME\\dev\\git_repos\\snippets\\ansible\\toolkit\\output\\host_details.txt"
+    linux_findings_path: "USERNAME/dev/git_repos/snippets/ansible/toolkit/output/host_details.txt"
+    host_db_path: "USERNAME/dev/git_repos/snippets/ansible/toolkit/output/IS_hosts.db"
+    headers: "Hostname,Domain,IP,OS,OS Version,OS Family,OS Kernel,OS Architecture,Uptime (secs),Manufacturer,PC Name,Serial Number,VM,System Date,System Time,Network Devices,Drives Encrypted"
+  
+  tasks:
+    - name: Set is_windows fact
+      set_fact:
+        is_windows: "{{ ansible_os_family == 'Windows' }}"
+
+    - block:
+        - name: Get mount information (Linux)
+          shell: df -Ph | sed s/%//g
+          register: df_output
+          ignore_errors: yes
+
+        - name: Get the number of days since the last Saturday
+          shell: echo $(( ( $(date +%s) - $(date -dlast-saturday +%s) ) / 86400 ))
+          register: days_since_last_saturday
+          changed_when: False
+
+        - name: Check if required files exist and were created after the last Saturday
+          find:
+            paths: "/var/log"
+            patterns: "{{ item }}"
+            age: "{{ days_since_last_saturday.stdout }}"
+            age_stamp: ctime
+          register: logs_collected
+          with_items:
+            - audit.log
+            - syslog
+            - auth.log
+          failed_when: logs_collected.matched == 0
+          ignore_errors: yes
+
+        - name: Check if all drives are encrypted (Linux)
+          shell: |
+            for device in $(lsblk -dpno NAME | grep -v loop); do
+              if ! cryptsetup isLuks $device > /dev/null 2>&1; then
+                echo "$device: Not Encrypted"
+              else
+                echo "$device: Encrypted"
+              fi
+            done
+          register: linux_encrypted
+
+        - name: Set facts for Linux
+          set_fact:
+            hostname: "{{ ansible_hostname }}"
+            domain: "{{ ansible_domain }}"
+            #fqdn: "{{ ansible_fqdn }}"
+            ip: "{{ ansible_default_ipv4.address }}"
+            os: "{{ ansible_distribution }}"
+            os_version: "{{ ansible_distribution_version }}"
+            os_family: "{{ ansible_os_family }}"
+            os_kernel: "{{ ansible_kernel }}"
+            os_arch: "{{ ansible_architecture }}"
+            uptime: "{{ ansible_uptime_seconds }}"
+            manufacturer: "{{ ansible_system_vendor | replace(',', '') }}"
+            product_name: "{{ ansible_product_name | replace(',', '.') }}"
+            serial_number: "{{ ansible_product_serial }}"
+            is_vm: "{{ ansible_virtualization_role }}"
+            system_date: "{{ ansible_date_time.date }}"
+            system_time: "{{ ansible_date_time.time }}"
+            network_devices: "{{ ansible_interfaces | map('replace', '-', '_') | select('in', ansible_facts) | map('extract', ansible_facts) | selectattr('active', 'equalto', true) | selectattr('macaddress', 'defined') | map(attribute='device') | list }}"
+            mounts: "{{ df_output.stdout_lines | join('\n') }}"
+            encryption_status: "{{ linux_encrypted.stdout_lines | map('split', ': ') | map('list') | list }}"
+          ignore_errors: yes
+      when: not is_windows
+
+    - block:
+        - name: Check if all drives are encrypted (Windows)
+          become: yes
+          become_method: runas
+          become_user: district79\USERNAME
+          win_shell: |
+            $drives = Get-WmiObject -Class Win32_LogicalDisk | Where-Object {$_.DriveType -eq 3}
+            $result = @()
+            foreach ($drive in $drives) {
+              $status = manage-bde -status $drive.DeviceID
+              if ($status -match "Conversion Status: Fully Encrypted") {
+                $result += "$($drive.DeviceID): Encrypted"
+              } else {
+                $result += "$($drive.DeviceID): Not Encrypted"
+              }
+            }
+            $result -join "`n"
+          register: win_encrypted
+
+        - name: Set facts for Windows
+          set_fact:
+            hostname: "{{ ansible_hostname }}"
+            domain: "{{ ansible_domain }}"
+            logs_collected: "{{ }}"
+            #fqdn: "{{ ansible_fqdn }}"
+            ip: "{{ ansible_ip_addresses | ipaddr('ipv4') | first }}"
+            os: "{{ ansible_distribution }}"
+            os_version: "{{ ansible_distribution_version }}"
+            os_family: "{{ ansible_os_family }}"
+            os_kernel: "{{ ansible_kernel }}"
+            os_arch: "{{ ansible_architecture }}"
+            uptime: "{{ ansible_uptime_seconds }}"
+            manufacturer: "{{ ansible_system_vendor | replace(',', '') }}"
+            product_name: "{{ ansible_product_name | replace(',', '.') }}"
+            serial_number: "{{ ansible_product_serial }}"
+            is_vm: "{{ ansible_virtualization_role }}"
+            system_date: "{{ ansible_date_time.date }}"
+            system_time: "{{ ansible_date_time.time }}"
+            network_devices: "{{ ansible_interfaces | map('replace', '-', '_') | select('in', ansible_facts) | map('extract', ansible_facts) | selectattr('active', 'equalto', true) | selectattr('macaddress', 'defined') | map(attribute='device') | list }}"
+            mounts: " "
+            encryption_status: "{{ win_encrypted.stdout_lines | map('split', ': ') | map('list') | list }}"
+          ignore_errors: yes
+      when: is_windows
+    
+    # - name: Debug encrypted
+    #   debug:
+    #     var: linux_encrypted
+    #   when: not is_windows
+
+    
+
+    
+
+    # - name: Findings (Windows)
+    #   win_shell: |
+    #     $content = @"
+    #     #####################################################
+    #                         {{ hostname }}               
+    #     #####################################################
+                
+    #         **                                                 **
+    #         **              DISK USAGE AND MOUNTS              **
+    #         **                                                 **
+            
+    #             {{ hostname }} has these mounts and disk usage:
+
+    #         **                                                 **
+    #         **           HARD DRIVE ENCRYPTION STATUS          **
+    #         **                                                 **
+
+    #             Hard drive encryption status for {{ hostname }}:
+    #             {{ encryption_status }}
+
+    #     "@
+    #     if (-not (Test-Path -Path "{{ win_findings_path }}")) {
+    #         New-Item -ItemType File -Path "{{ win_findings_path }}"
+    #     }
+    #     Add-Content -Path "{{ win_findings_path }}" -Value $content
+    #   when: ansible_os_family == "Windows"
+
+    # - name: Findings (Linux)
+    #   shell: |
+    #     cat << EOF >> {{ linux_findings_path }}
+    #     #####################################################
+    #                          {{ hostname }}               
+    #     #####################################################
+
+    #         **                                                 **
+    #         **              DISK USAGE AND MOUNTS              **
+    #         **                                                 ** 
+
+    #             {{ hostname }} disk usage and mounts are: 
+    #             {{ mounts }}
+
+    #         **                                                 **
+    #         **           HARD DRIVE ENCRYPTION STATUS          **
+    #         **                                                 **
+
+    #             Hard drive encryption status for {{ hostname }}:
+    #             {{ encryption_status }}
+
+    #     EOF
+    #   when: ansible_os_family != "Windows"
+
+    - name: Store Linux facts in SQLite database
+      delegate_to: MINI
+      shell: |
+        python3 -c "
+        import sqlite3
+        import json
+
+        conn = sqlite3.connect('{{ host_db_path }}')
+        c = conn.cursor()
+
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS findings (
+                hostname TEXT PRIMARY KEY,
+                domain TEXT,
+                ip TEXT,
+                os TEXT,
+                os_version TEXT,
+                os_family TEXT,
+                os_kernel TEXT,
+                os_arch TEXT,
+                uptime INTEGER,
+                manufacturer TEXT,
+                product_name TEXT,
+                serial_number TEXT,
+                is_vm TEXT,
+                system_date TEXT,
+                system_time TEXT,
+                network_devices TEXT,
+                encryption_status TEXT
+            )
+        ''')
+
+        network_devices_str = json.dumps({{ network_devices }})
+        encryption_status_str = json.dumps({{ encryption_status }})
+        
+        c.execute('''
+            INSERT OR REPLACE INTO findings VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', {{ db_vars }})
+
+        conn.commit()
+        conn.close()
+        "
+      
+    - name: Check for more than 2 devices
+      delegate_to: MINI
+      shell: |
+        python3 -c "
+        import sqlite3
+
+        conn = sqlite3.connect('{{ host_db_path }}')
+        c = conn.cursor()
+        c.execute('SELECT hostname, network_devices FROM findings')
+        rows = c.fetchall()
+
+        with open('USERNAME/dev/git_repos/snippets/ansible/toolkit/output/findings.txt', 'w') as f:
+            for row in rows:
+                if len(row[1].split(',')) > 2:
+                    # Write the formatted output to the text file
+                    f.write('#####################################################\\n')
+                    f.write(f'                    {row[0]}               \\n')
+                    f.write('#####################################################\\n\\n')
+                    f.write('**                                                 **\\n')
+                    f.write('** ACTIVE NICs, BLUETOOTH, AND/OR WIRELESS DEVICES **\\n')
+                    f.write('**                                                 **\\n\\n')
+                    f.write(f'The active devices on  {row[0]} are:\\n  {row[1]}\\n\\n\\n')
+
+        conn.close()
+        "
+      
+    - name: check for non encrypted drives
+      delegate_to: MINI
+      shell: |
+        python3 -c "
+        import sqlite3
+
+        conn = sqlite3.connect('{{ host_db_path }}')
+        c = conn.cursor()
+        c.execute('SELECT hostname, encryption_status FROM findings')
+        rows = c.fetchall()
+
+        with open('/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/findings.txt', 'w') as f:
+          for row in rows:
+            if 'Not Encrypted' in row[1]:
+              # Write the formatted output to the text file
+              f.write('#####################################################\\n')
+              f.write(f'                    {row[0]}               \\n')
+              f.write('#####################################################\\n\\n')
+              f.write('**                                                 **\\n')
+              f.write('**           HARD DRIVE ENCRYPTION STATUS          **\\n')
+              f.write('**                                                 **\\n\\n')
+              f.write(f'The hard drive encryption status for {row[0]} is:\\n  {row[1]}\\n\\n\\n')
+        conn.close()
+        "
+
+    - name: Export DB to CSV
+      delegate_to: MINI
+      shell: |
+        python3 -c "
+        import sqlite3
+        import csv
+
+        # Connect to the SQLite database
+        conn = sqlite3.connect('{{ host_db_path }}')
+        c = conn.cursor()
+
+        headers = {{ headers.split(',') }}
+        c.execute('SELECT * FROM findings')
+        rows = c.fetchall()
+
+        with open('USERNAME/dev/git_repos/snippets/ansible/toolkit/output/all_hosts.csv', 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+            writer.writerows(rows)
+
+        # Close the database connection
+        conn.close()
+        "
+
+      # Add cron, luks file perms, luks default pass,

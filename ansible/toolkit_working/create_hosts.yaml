@@ -1,0 +1,57 @@
+---
+- name: Query Active Directory
+  hosts: WIndows
+  gather_facts: false
+  become: yes
+  become_method: runas
+  become_user: DOMAIN\USERNAME
+
+  vars:
+    file_path: "\\\\192.168.1.149\\storage\\home\\USERNAME\\dev\\git_repos\\snippets\\ansible\\toolkit\\output\\hosts.ini"
+    config: "{{ lookup('file', './config.json') | from_json }}"
+
+  tasks:
+    - name: Query Active Directory
+      hosts: "{{ config.ad_server }}"
+      win_shell: |
+        {% raw %}
+        $linuxHosts = @()
+        $windowsHosts = @()
+        $hosts = Get-ADComputer -Filter * -Properties * | Select-Object Name, OperatingSystem, IPv4Address
+        $hosts | ForEach-Object {
+          if ($_.OperatingSystem -like "*Linux*") {
+            $linuxHosts += "$($_.Name) ansible_host=$($_.IPv4Address)"
+          } else {
+            $windowsHosts += "$($_.Name) ansible_host=$($_.IPv4Address)"
+          }
+        }
+        Write-Output "[linux]"
+        $linuxHosts | ForEach-Object { Write-Output $_ }
+        Write-Output ""
+        Write-Output "[windows]"
+        $windowsHosts | ForEach-Object { Write-Output $_ }
+        {% endraw %}
+      register: ad_hosts
+
+    - name: Create host.ini file
+      hosts: "{{ config.ad_server }}"
+      copy:
+        content: "{{ ad_hosts.stdout }}"
+        dest: "{{ file_path }}"
+
+    - name: Append vars to host.ini file
+      hosts: "{{ config.ad_server }}"
+      win_shell: |
+        Add-Content -Path "{{ file_path }}" -Value @"
+        
+        [linux:vars]
+        ansible_user=root
+
+        [windows:vars]
+        ansible_connection=winrm 
+        ansible_winrm_transport=ntlm 
+        ansible_user=USERNAME 
+        ansible_port=5985 
+        ansible_winrm_message_encryption=auto
+        ansible_python_interpreter=C:\\Users\\administrator\\AppData\\Local\\Programs\\Python\\Python312\\python.exe
+        "@

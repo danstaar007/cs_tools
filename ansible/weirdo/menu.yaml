@@ -1,0 +1,31 @@
+---
+- name: test menu
+  hosts: all
+  gather_facts: yes
+  vars_files: 
+    - menu_vars.yaml
+  vars_prompt:
+    - name: "user_input"
+      prompt: |- 
+        Install Menu:
+        =========================================
+        {% for option in menu.ansible.main %}
+        {{ loop.index }} - {{ option.name }}
+        {% endfor %}
+      private: no
+  tasks:
+
+  - name: Quit
+    fail:
+      msg: "User selected Quit. Stopping playbook."
+    when: user_input == '4'
+    
+  - name: Debug
+    debug:
+      msg: "User input: {{ user_input }}, Option: {{ menu.ansible.main[user_input|int - 1].option }}"
+
+  - name: Run playbook
+    command: "ansible-playbook {{ menu.ansible.main[user_input|int - 1].main }}.yaml --tags {{ menu.ansible.main[user_input|int - 1].tag }} -v"
+    when: user_input != '4'
+
+### not working when calling outside playbooks

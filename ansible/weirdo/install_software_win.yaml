@@ -1,0 +1,41 @@
+---
+- name: Install software
+  hosts: all
+  gather_facts: yes
+
+  vars:
+    windows_package: "/downloads/utilities/sysmon/Sysmon64.exe"
+    splunk_forwarder_service_name: "SplunkForwarder"
+    splunk_forwarder_install_dir: "C:\\Program Files\\SplunkUniversalForwarder"
+    is_windows: "{{ ansible_os_family == 'Windows' }}"
+
+  tasks:
+    - name: Gather only ansible_os_family fact
+      setup:
+        filter: ansible_os_family
+
+    - block:
+      - name: Copy Sysmon to remote
+        win_copy:
+          src: "{{ windows_package }}"
+          dest: "C:\\sysmon64.exe"
+
+      - name: Install Sysmon
+        win_package:
+          path: "C:\\sysmon64.exe"
+          state: present
+          arguments: >-
+            #/i config.xml ### need to get this
+            /accepteula
+            /i
+            /n
+            /quiet
+            /norestart
+
+      - name: Remove Sysmon Install
+        win_file:
+          path: "C:\\sysmon64.exe"
+          state: absent
+
+      tags: sysmon
+      when: is_windows

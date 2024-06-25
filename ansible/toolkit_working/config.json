@@ -1,0 +1,11 @@
+{
+    "AD_servers": "dc-1", 
+    "database_path_linux": "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/IS_hosts.db", 
+    "database_path_win": "C:\\Users\\hydr0burn\\Desktop\\toolkit\\output\\IS_hosts.db", 
+    "IS_name": "IS xxxx TOOLKIT", 
+    "splunk_server": "good test", 
+    "playbook_location": "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/playbooks/", 
+    "Windows User": "district79\\hydr0burn", 
+    "ansible_machine": "SPLUNK",
+    "host_db_path": "/home/USERNAME/dev/git_repos/snippets/ansible/toolkit/output/IS_hosts.db"
+}

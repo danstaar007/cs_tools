@@ -1,0 +1,139 @@
+---
+- name: Install/Reinstall Splunk Forwarder
+  hosts: all
+  gather_facts: yes
+  become: yes
+  become_method: sudo
+
+  vars:
+    splunk_forwarder_linux_package: "/downloads/utilities/splunkforwarder-9.1.2-b6b9c8185839.x86_64.rpm"  
+    forwarder_deb_package: "/downloads/utilities/splunkforwarder-9.1.1-64e843ea36b1-linux-2.6-amd64.deb"
+    splunk_forwarder_windows_package: "/downloads/utilities/splunkforwarder-9.1.2-b6b9c8185839-x64-release.msi" 
+    splunk_forwarder_service_name: "SplunkForwarder" 
+    splunk_forwarder_install_dir: "C:\\Program Files\\SplunkUniversalForwarder"
+    splunk_deployment_server: "192.168.1.125:8089"
+    splunk_indexer: "192.168.1.125:9997"
+
+  tasks:
+    - name: Determine OS
+      set_fact:
+        is_windows: "{{ ansible_os_family == 'Windows' }}"
+
+    - block:  # Windows Hosts
+
+        - name: Get Forwarder Product ID (Windows)
+          win_shell: |
+            Get-ItemProperty -Path HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*, HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* |
+            Where-Object { $_.DisplayName -like "UniversalForwarder" } |
+            Select-Object -ExpandProperty PSChildName
+          register: results
+
+        - name: Uninstall Forwarder (Windows)
+          win_package:
+            product_id: "{{ results.stdout | trim }}"
+            state: absent
+          when: splunk_dir.stat.exists
+
+        - name: Copy Forwarder to remote (Windows)
+          win_copy:
+            src: "{{ splunk_forwarder_windows_package }}"
+            dest: "C:\\splunkforwarder-9.1.2-b6b9c8185839-x64-release.msi"
+
+        - name: Install Forwarder (Windows)
+          win_package:
+            path: "C:\\splunkforwarder-9.1.2-b6b9c8185839-x64-release.msi"
+            state: present
+            arguments: >-
+              AGREETOLICENSE=Yes
+              DEPLOYMENT_SERVER="{{ splunk_deployment_server }}"
+              RECEIVING_INDEXER="{{ splunk_indexer }}"
+              
+        - name: Start Forwarder (Windows)
+          win_service:
+            name: "{{ splunk_forwarder_service_name }}"
+            state: started
+            start_mode: auto
+
+        - name: Remove Forwarder Install
+          win_file:
+            path: "C:\\splunkforwarder-9.1.2-b6b9c8185839-x64-release.msi"
+            state: absent
+      when: is_windows
+      tags: splunk_forwarder
+
+    - block:  # Linux Hosts
+        - name: Stop Forwarder
+          command: "/opt/splunkforwarder/bin/splunk stop"
+          ignore_errors: true
+          
+        - name: Uninstall Forwarder 
+          command: "{{ ('apt remove -y splunkforwarder' if ansible_os_family == 'Debian' else 'rpm -e splunkforwarder') }}"
+          ignore_errors: true
+
+        - name: Check if /opt/splunkforwarder directory exists
+          stat:
+            path: /opt/splunkforwarder
+          register: splunk_dir
+
+        - name: Delete /opt/splunkforwarder directory
+          file:
+            path: /opt/splunkforwarder
+            state: absent
+          become: yes
+          when: splunk_dir.stat.exists
+
+        - name: Copy Forwarder Install
+          copy:
+            src: "{{ forwarder_deb_package if ansible_os_family == 'Debian' else splunk_forwarder_linux_package }}"
+            dest: "/tmp/{{ 'splunkforwarder.deb' if ansible_os_family == 'Debian' else 'splunkforwarder.rpm' }}"
+
+        - name: Install Forwarder 
+          command: "{{ ('apt install /tmp/splunkforwarder.deb' if ansible_os_family == 'Debian' else 'rpm -i /tmp/splunkforwarder.rpm --prefix=/opt/splunkforwarder') }}"
+        
+        - name: Create user-seed.conf file
+          copy:
+            content: |
+              [user_info]
+              USERNAME = admin
+              PASSWORD = password
+            dest: /opt/splunkforwarder/etc/system/local/user-seed.conf
+          become: yes  
+        
+        - name: Start Forwarder and Accept License 
+          command: "/opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt"
+          #ignore_errors: true
+        
+        - name: Wait for 10 seconds
+          pause:
+            seconds: 10
+        
+        - name: Disable Boot start
+          command: "{{ ('/opt/splunkforwarder/bin/splunk disable boot-start' ) }}"
+          ignore_errors: true
+        
+        - name: Stop Forwarder 
+          command: "/opt/splunkforwarder/bin/splunk stop"
+          #ignore_errors: true
+        
+        - name: Set deploy-poll
+          command: "/opt/splunkforwarder/bin/splunk set deploy-poll '{{ splunk_deployment_server }}' -auth 'admin:password'"
+          notify: restart splunk
+
+        - name: Add forward-server
+          command: "/opt/splunkforwarder/bin/splunk add forward-server '{{ splunk_indexer }}' -auth 'admin:password'"
+          notify: restart splunk
+
+        - name: Start Forwarder on Boot
+          command: "{{ ('/opt/splunkforwarder/bin/splunk enable boot-start -user root' ) }}"
+          ignore_errors: true
+  
+      when: not is_windows
+      tags: splunk_forwarder
+              
+
+  handlers:
+    - name: restart splunk
+      service:
+        name: SplunkForwarder
+        state: restarted
+      

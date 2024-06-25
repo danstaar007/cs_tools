@@ -1,0 +1,6 @@
+create a bash script (maybe any script)
+
+echo 'script' | base64 --encode
+
+to run
+	echo 'long ass encoded script' | base64 --decode
