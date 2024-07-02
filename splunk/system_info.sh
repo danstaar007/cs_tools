@@ -13,23 +13,36 @@ f_print () {
 
 if [[ "$is_vm" == *"Hypervisor"* ]]; then
     vm="Virtual Machine"
+    is_laptop="N/A"
 else
     vm="Physical Machine"
+    if ls /sys/class/power_supply/*/type 2> /dev/null | grep -q "Battery"; then
+        is_laptop="Laptop"
+    else
+        is_laptop="Workstation"
+    fi
 fi
+
+## put this in the is_vm.  If it's a vm then it cant be either
+
 
 IFS=$'\n'
 printf "Hostname: $host_name\n"
-printf "Host Type: $vm\n"
-printf "Host S/N: $host_sn\n"
+printf "Hardware Type: $vm\n"
+printf "Machine S/N: $host_sn\n"
+printf "Machine Type: $is_laptop\n"
 
-counter=1
+echo "Hard Drives:"
 for hdd in $hdds; do
     hdd_name=$(echo $hdd | awk '{print $1}')
     hdd_sn=$(echo $hdd | awk '{print $2}')
-    printf "Hard Drive #$counter: $hdd_name\n"
-    printf "Hard Drive #$counter S/N: $hdd_sn\n"
-    printf "Hard Drive #$counter Vendor: " && cat "/sys/block/$hdd_name/device/model" && printf "\n"
-    ((counter++))
+    hdd_type=$(cat "/sys/block/$hdd_name/device/type" 2>/dev/null || echo "Unknown Type")
+    hdd_model=$(cat "/sys/block/$hdd_name/device/model" 2>/dev/null || echo "Unknown Model")
+    
+    echo "    Hard Drive #: $hdd_type"
+    echo "        Type: $hdd_model"
+    echo "        Serial Number: $hdd_sn"
+    echo ""
 done
 
 
