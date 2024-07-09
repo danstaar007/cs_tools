@@ -31,7 +31,7 @@ if (-not ($splunk_hostname -eq $env:COMPUTERNAME)){
 
 ### Replace the incorrect hostname with the correct hostname in inputs/server.conf
 if ($correct_servername -eq "1") {
-    Write-output "The hostname in server.conf is $splunk_server, which is incorrect. Overwriting server.conf with $env:COMPUTERNAME." 
+    #Write-output "The hostname in server.conf is $splunk_server, which is incorrect. Overwriting server.conf with $env:COMPUTERNAME." 
     Copy-Item -Path "$splunk\server.conf" -Destination "$splunk\server_$(Get-Date -Format 'yyyyMMdd').conf.bak"
     (Get-Content -path $splunk\server.conf -Raw) -replace $splunk_server,$env:COMPUTERNAME | Set-Content $SPLUNK_LOCAL\server.conf
 } else {
@@ -39,12 +39,12 @@ if ($correct_servername -eq "1") {
 }
 
 if ($correct_hostname -eq "1") {
-    Write-output "The hostname in inputs.conf is $splunk_hostname, which is incorrect. Overwriting inputs.conf with $env:COMPUTERNAME."
+   # Write-output "The hostname in inputs.conf is $splunk_hostname, which is incorrect. Overwriting inputs.conf with $env:COMPUTERNAME."
     Copy-Item -Path "$splunk\inputs.conf" -Destination "$splunk\inputs_$(Get-Date -Format 'yyyyMMdd').conf.bak"
     (Get-Content -path $splunk\inputs.conf -Raw) -replace $splunk_hostname,$env:COMPUTERNAME | Set-Content $SPLUNK_LOCAL\inputs.conf
     
 } else {
-    Write-output "The hostname in inputs.conf is the correct hostname, $splunk_hostname."
+   # Write-output "The hostname in inputs.conf is the correct hostname, $splunk_hostname."
 }
 
 

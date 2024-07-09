@@ -23,7 +23,7 @@ else
     fi
 fi
 
-## put this in the is_vm.  If it's a vm then it cant be either
+
 
 
 IFS=$'\n'

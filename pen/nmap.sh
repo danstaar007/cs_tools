@@ -1,3 +1,6 @@
+### get hostname
+    nmap 10.129.121.188 -p445 -T5 -sV
+
 ### check if host is alive
     nmap 10.129.2.18 -sn -oA host 
 
