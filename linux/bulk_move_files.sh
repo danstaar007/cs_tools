@@ -1,19 +1,13 @@
 #!/bin/bash
 
-# array for each folder that needs to be moved and archived
-# It works by adding (top level folder, mtime for days/ mmin for mins, 1st find mindepth, 1st find maxdepth, 2nd find mindepth, 2nd find maxdepth, destination folder)
-# the intent is the top level folder contains the week folder of the month and year (top level)
-# when archived, depending on the min/max depth, you will get different resulting naming conventions
-# try to get the folder of the week to be the archived folder
-
-# function to call after the find
+### function to call after the find
 # may be the way I am multi threading??
 function tar_folder() {
     folder=$1
     tar --null -czf "$global_save_location/$archive" "$folder" && echo "$folder complete"
 }
 
-# array for each folder that needs to be moved and archived
+### array for each folder that needs to be moved and archived
 # It works by adding (top level folder, mtime for days/ mmin for mins, 1st find mindepth, 1st find maxdepth, 2nd find mindepth, 2nd find maxdepth, destination folder)
 # the intent is the top level folder contains the week folder of the month and year (top level)
 # when archived, depending on the min/max depth, you will get different resulting naming conventions
@@ -64,6 +58,8 @@ for key in "${!locations[@]}"; do
     # WARNING!!! THIS WILL REMOVE THE ORGINAL FILES FROM THE ORIGINAL FILE LOCATION
     # removes the old files/folders from original location
     # uncomment the finds for this to work
+
+
     #find "$base_name" -type f -mtime +"$days_old" -exec rm {} +
     #find "$base_name" -mindepth 1 -type d -empty -delete
 
